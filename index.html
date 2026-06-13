@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Austin Crime Reports — APD</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #111213;
+    --bg-hover: #1e2023;
+    --border: rgba(255,255,255,0.08);
+    --border-mid: rgba(255,255,255,0.14);
+    --text-primary: #e8e8e8;
+    --text-secondary: #999;
+    --text-dim: #555;
+    --accent-red: #c94040;
+    --accent-amber: #c97b1a;
+    --accent-purple: #7065c4;
+    --accent-teal: #1e9070;
+    --accent-gray: #525252;
+    --info: #3d80c4;
+  }
+  html, body {
+    height: 100%; background: var(--bg); color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 24px; line-height: 1.4; -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  #widget { display: flex; flex-direction: column; height: 100vh; max-width: 640px; margin: 0 auto; }
+
+  /* ── Header ── */
+  #header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px 12px; border-bottom: 0.5px solid var(--border); flex-shrink: 0;
+  }
+  #header-left { display: flex; align-items: center; gap: 12px; }
+  #header h1 { font-size: 18px; font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; }
+  .badge { font-size: 13px; font-weight: 700; letter-spacing: 0.05em; padding: 3px 10px; border-radius: 99px; }
+  .badge-apd { background: rgba(201,123,26,0.18); color: #e8a060; border: 0.5px solid rgba(201,123,26,0.35); }
+  #refresh-btn {
+    display: flex; align-items: center; gap: 6px; font-size: 14px;
+    color: var(--text-secondary); background: none;
+    border: 0.5px solid var(--border-mid); border-radius: 6px; padding: 5px 12px; cursor: pointer;
+  }
+  #refresh-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+  /* ── Filter bar ── */
+  #filter-bar {
+    display: flex; gap: 6px; padding: 9px 20px;
+    border-bottom: 0.5px solid var(--border); flex-wrap: wrap; flex-shrink: 0;
+  }
+  .fchip {
+    font-size: 14px; font-weight: 500; padding: 4px 13px; border-radius: 99px;
+    border: 0.5px solid var(--border-mid); color: var(--text-secondary);
+    background: none; cursor: pointer; transition: all 0.15s; letter-spacing: 0.03em;
+  }
+  .fchip:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.25); }
+  .fchip.active { color: #fff; border-color: transparent; }
+  .fchip.active[data-cat="all"]      { background: rgba(255,255,255,0.12); }
+  .fchip.active[data-cat="violent"]  { background: rgba(201,64,64,0.35); color: #e88; }
+  .fchip.active[data-cat="property"] { background: rgba(201,123,26,0.35); color: #e8a060; }
+  .fchip.active[data-cat="drug"]     { background: rgba(112,101,196,0.35); color: #a89ee0; }
+  .fchip.active[data-cat="traffic"]  { background: rgba(30,144,112,0.35); color: #6dcaaa; }
+  .fchip.active[data-cat="other"]    { background: rgba(82,82,82,0.4); color: #aaa; }
+
+  /* ── Status bar ── */
+  #status-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 20px; border-bottom: 0.5px solid var(--border); flex-shrink: 0;
+  }
+  #record-count { font-size: 12px; color: var(--text-dim); }
+  #data-lag { font-size: 12px; color: var(--text-dim); font-style: italic; }
+
+  /* ── Ticker viewport ── */
+  #ticker-wrap { flex: 1; position: relative; overflow: hidden; }
+  #ticker-wrap::before, #ticker-wrap::after {
+    content: ''; position: absolute; left: 0; right: 0; z-index: 2; pointer-events: none; height: 60px;
+  }
+  #ticker-wrap::before { top: 0;    background: linear-gradient(to bottom, var(--bg), transparent); }
+  #ticker-wrap::after  { bottom: 0; background: linear-gradient(to top,   var(--bg), transparent); }
+  #ticker-inner { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
+
+  /* ── Incident rows ── */
+  .incident {
+    display: grid; grid-template-columns: 4px 1fr auto;
+    gap: 0 14px; align-items: start;
+    padding: 16px 20px; border-bottom: 0.5px solid var(--border);
+  }
+  .incident:last-child { border-bottom: none; }
+  .dot { align-self: stretch; min-height: 26px; border-radius: 2px; width: 4px; margin-top: 3px; }
+  .dot.violent  { background: var(--accent-red); }
+  .dot.property { background: var(--accent-amber); }
+  .dot.drug     { background: var(--accent-purple); }
+  .dot.traffic  { background: var(--accent-teal); }
+  .dot.other    { background: var(--accent-gray); }
+  .inc-type { font-size: 24px; font-weight: 500; color: var(--text-primary); margin-bottom: 4px; line-height: 1.25; }
+  .inc-meta { font-size: 18px; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .inc-meta i { font-size: 15px; }
+  .inc-narrative { font-size: 16px; color: var(--text-secondary); margin-top: 5px; line-height: 1.5; font-style: italic; }
+  .inc-date { font-size: 17px; color: var(--text-dim); white-space: nowrap; padding-top: 3px; text-align: right; }
+
+  /* ── Loading / empty ── */
+  #empty-state {
+    padding: 50px 20px; text-align: center; color: var(--text-secondary);
+    font-size: 20px; display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+
+  /* ── Footer ── */
+  #footer {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 20px; border-top: 0.5px solid var(--border); flex-shrink: 0;
+  }
+  #updated { font-size: 13px; color: var(--text-dim); }
+  .foot-link { font-size: 13px; color: var(--info); text-decoration: none; display: flex; align-items: center; gap: 4px; opacity: 0.75; }
+  .foot-link:hover { opacity: 1; text-decoration: underline; }
+
+  /* ── Pause badge ── */
+  #pause-badge {
+    position: absolute; top: 10px; right: 14px; z-index: 10;
+    font-size: 12px; color: var(--text-dim);
+    background: rgba(0,0,0,0.5); border: 0.5px solid var(--border-mid);
+    padding: 2px 8px; border-radius: 99px;
+    opacity: 0; transition: opacity 0.3s; pointer-events: none;
+  }
+  #pause-badge.visible { opacity: 1; }
+
+  .spin { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="widget">
+  <div id="header">
+    <div id="header-left">
+      <i class="ti ti-shield-lock" style="font-size:17px;color:#666;" aria-hidden="true"></i>
+      <h1>Austin Crime Reports</h1>
+      <span class="badge badge-apd">APD</span>
+    </div>
+    <button id="refresh-btn" onclick="doRefresh()">
+      <i class="ti ti-refresh" id="refresh-icon" style="font-size:12px;" aria-hidden="true"></i>Refresh
+    </button>
+  </div>
+
+  <div id="filter-bar">
+    <button class="fchip active" data-cat="all"      onclick="setFilter(this,'all')">All</button>
+    <button class="fchip"        data-cat="violent"  onclick="setFilter(this,'violent')">Violent</button>
+    <button class="fchip"        data-cat="property" onclick="setFilter(this,'property')">Property</button>
+    <button class="fchip"        data-cat="drug"     onclick="setFilter(this,'drug')">Drug / DUI</button>
+    <button class="fchip"        data-cat="traffic"  onclick="setFilter(this,'traffic')">Traffic</button>
+    <button class="fchip"        data-cat="other"    onclick="setFilter(this,'other')">Other</button>
+  </div>
+
+  <div id="status-bar">
+    <span id="record-count">Loading…</span>
+    <span id="data-lag">weekly data</span>
+  </div>
+
+  <div id="ticker-wrap">
+    <div id="pause-badge">⏸ paused</div>
+    <div id="ticker-inner">
+      <div id="empty-state"><i class="ti ti-loader spin" style="font-size:26px;"></i> Loading…</div>
+    </div>
+  </div>
+
+  <div id="footer">
+    <span id="updated"></span>
+    <a class="foot-link" href="https://data.austintexas.gov/Public-Safety/Crime-Reports/fdj4-gpfu" target="_blank">
+      Full dataset <i class="ti ti-external-link" style="font-size:11px;"></i>
+    </a>
+  </div>
+</div>
+
+<script>
+var incidents    = [];
+var activeFilter = 'all';
+var loading      = false;
+
+var tickerY      = 0;
+var tickerSpeed  = 40;
+var tickerPaused = false;
+var lastTime     = null;
+var rafId        = null;
+var totalH       = 0;
+
+// Socrata — native CORS, no proxy needed; $limit=150 for 150 incidents
+var APD_URL = 'https://data.austintexas.gov/resource/fdj4-gpfu.json?$limit=150&$order=occ_date_time+DESC';
+
+var VIOLENT  = ['MURDER','HOMICIDE','RAPE','ROBBERY','ASSAULT','SHOOTING','WEAPON','THREAT','KIDNAP','ARSON','STRANGULATION','FAMILY DISTURBANCE','DEADLY CONDUCT','AGG ASSAULT','SEX OFFENSE'];
+var PROPERTY = ['BURGLARY','THEFT','LARCENY','AUTO THEFT','MOTOR VEHICLE','TRESPASS','VANDALISM','CRIMINAL MISCHIEF','FRAUD','FORGERY','SHOPLIFTING','STOLEN','EMBEZZLE','GRAFFITI'];
+var DRUG     = ['DRUG','NARCOTIC','DWI','DUI','ALCOHOL','PUBLIC INTOX','CONTROLLED SUBSTANCE'];
+var TRAFFIC  = ['TRAFFIC','CRASH','ACCIDENT','HIT AND RUN','HIT-AND-RUN','FAIL TO STOP','RECKLESS DRIVING'];
+
+function categorize(type) {
+  if (!type) return 'other';
+  var u = type.toUpperCase();
+  for (var i = 0; i < TRAFFIC.length;  i++) if (u.indexOf(TRAFFIC[i])  !== -1) return 'traffic';
+  for (var i = 0; i < DRUG.length;     i++) if (u.indexOf(DRUG[i])     !== -1) return 'drug';
+  for (var i = 0; i < VIOLENT.length;  i++) if (u.indexOf(VIOLENT[i])  !== -1) return 'violent';
+  for (var i = 0; i < PROPERTY.length; i++) if (u.indexOf(PROPERTY[i]) !== -1) return 'property';
+  return 'other';
+}
+
+function fmtDateStr(str) {
+  if (!str) return '';
+  var d = new Date(str);
+  if (isNaN(d)) return '';
+  var diff = Date.now() - d;
+  if (diff < 3600000)  return Math.floor(diff / 60000) + 'm ago';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+  var days = Math.floor(diff / 86400000);
+  if (days < 7) return days + 'd ago';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function titleCase(s) {
+  if (!s) return '';
+  return s.toLowerCase().replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+}
+
+// ── Ticker ──────────────────────────────────────────────────────────────────
+function tickerFrame(ts) {
+  if (!tickerPaused && lastTime !== null) {
+    tickerY -= tickerSpeed * (ts - lastTime) / 1000;
+    var halfH = totalH / 2;
+    if (halfH > 0 && -tickerY >= halfH) tickerY += halfH;
+    document.getElementById('ticker-inner').style.transform = 'translateY(' + tickerY + 'px)';
+  }
+  lastTime = ts;
+  rafId = requestAnimationFrame(tickerFrame);
+}
+
+function startTicker() {
+  if (rafId) cancelAnimationFrame(rafId);
+  tickerY = 0; lastTime = null;
+  rafId = requestAnimationFrame(tickerFrame);
+}
+
+function pauseTicker(on) {
+  tickerPaused = on; lastTime = null;
+  document.getElementById('pause-badge').classList.toggle('visible', on);
+}
+
+window.addEventListener('DOMContentLoaded', function() {
+  var w = document.getElementById('ticker-wrap');
+  w.addEventListener('mouseenter', function() { pauseTicker(true); });
+  w.addEventListener('mouseleave', function() { pauseTicker(false); });
+  w.addEventListener('click',      function() { pauseTicker(!tickerPaused); });
+});
+
+// ── Render ──────────────────────────────────────────────────────────────────
+function render() {
+  var shown = activeFilter === 'all'
+    ? incidents
+    : incidents.filter(function(i) { return i.cat === activeFilter; });
+
+  var inner = document.getElementById('ticker-inner');
+
+  if (!shown.length) {
+    inner.innerHTML = '<div id="empty-state">' +
+      (loading ? '<i class="ti ti-loader spin" style="font-size:26px;"></i> Loading…' : 'No incidents for this filter.') +
+      '</div>';
+    totalH = 0; return;
+  }
+
+  var rowsHTML = shown.map(function(inc) {
+    var type = inc.type     ? titleCase(inc.type)     : 'Unknown incident';
+    var loc  = inc.location ? titleCase(inc.location) : '';
+    return '<div class="incident">' +
+      '<div class="dot ' + inc.cat + '"></div>' +
+      '<div>' +
+        '<div class="inc-type">' + type + '</div>' +
+        '<div class="inc-meta">' +
+          (loc ? '<span><i class="ti ti-map-pin" aria-hidden="true"></i> ' + loc + '</span>' : '') +
+          (inc.case_no ? '<span><i class="ti ti-file-description" aria-hidden="true"></i> ' + inc.case_no + '</span>' : '') +
+        '</div>' +
+        (inc.narrative ? '<div class="inc-narrative">' + inc.narrative + '</div>' : '') +
+      '</div>' +
+      '<div class="inc-date">' + fmtDateStr(inc.dateStr) + '</div>' +
+    '</div>';
+  }).join('');
+
+  inner.innerHTML = rowsHTML + rowsHTML;
+
+  requestAnimationFrame(function() {
+    totalH = inner.scrollHeight;
+    tickerY = 0; lastTime = null;
+    startTicker();
+  });
+}
+
+function setFilter(btn, cat) {
+  activeFilter = cat;
+  document.querySelectorAll('.fchip').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  render();
+}
+
+// ── Data loader ─────────────────────────────────────────────────────────────
+function loadData() {
+  loading = true;
+  document.getElementById('record-count').textContent = 'Loading…';
+  fetch(APD_URL)
+    .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+    .then(function(rows) {
+      if (!Array.isArray(rows) || !rows.length) throw new Error();
+      incidents = rows.map(function(r) {
+        var typeVal  = r.crime_type || '';
+        var dateStr  = r.occ_date_time || r.rep_date_time || '';
+        var narrative = '';
+        if (r.clearance_status && r.clearance_status !== 'N' && r.clearance_status !== 'O') {
+          narrative = 'Cleared: ' + r.clearance_status;
+        }
+        return {
+          type:      typeVal,
+          location:  r.location_type || '',
+          dateStr:   dateStr,
+          case_no:   r.incident_report_number || '',
+          narrative: narrative,
+          cat:       categorize(typeVal)
+        };
+      });
+      loading = false;
+      document.getElementById('record-count').textContent = incidents.length + ' incidents';
+      document.getElementById('updated').textContent =
+        'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('refresh-icon').classList.remove('spin');
+      render();
+    })
+    .catch(function() {
+      loading = false;
+      document.getElementById('record-count').textContent = 'Data unavailable';
+      document.getElementById('refresh-icon').classList.remove('spin');
+      render();
+    });
+}
+
+function doRefresh() {
+  document.getElementById('refresh-icon').classList.add('spin');
+  incidents = []; render(); loadData();
+}
+
+loadData();
+setInterval(loadData, 600000);
+</script>
+</body>
+</html>
