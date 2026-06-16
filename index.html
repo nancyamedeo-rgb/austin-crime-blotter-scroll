@@ -154,7 +154,7 @@
 
   <div id="status-bar">
     <span id="record-count">Loading…</span>
-    <span id="data-lag">last 30 days</span>
+    <span id="data-lag">most recent 150 reports</span>
   </div>
 
   <div id="ticker-wrap">
@@ -184,8 +184,8 @@ var lastTime     = null;
 var rafId        = null;
 var totalH       = 0;
 
-// Socrata — native CORS, no proxy needed; fetch recent records then filter client-side
-var APD_URL = 'https://data.austintexas.gov/resource/fdj4-gpfu.json?$limit=500&$order=occ_date_time+DESC';
+// Socrata — native CORS, no proxy needed; $limit=150 for 150 most recent incidents
+var APD_URL = 'https://data.austintexas.gov/resource/fdj4-gpfu.json?$limit=150&$order=occ_date_time+DESC';
 
 var VIOLENT  = ['MURDER','HOMICIDE','RAPE','ROBBERY','ASSAULT','SHOOTING','WEAPON','THREAT','KIDNAP','ARSON','STRANGULATION','FAMILY DISTURBANCE','DEADLY CONDUCT','AGG ASSAULT','SEX OFFENSE'];
 var PROPERTY = ['BURGLARY','THEFT','LARCENY','AUTO THEFT','MOTOR VEHICLE','TRESPASS','VANDALISM','CRIMINAL MISCHIEF','FRAUD','FORGERY','SHOPLIFTING','STOLEN','EMBEZZLE','GRAFFITI'];
@@ -305,12 +305,6 @@ function loadData() {
     .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
     .then(function(rows) {
       if (!Array.isArray(rows) || !rows.length) throw new Error();
-      var cutoff = new Date();
-      cutoff.setMonth(cutoff.getMonth() - 1);
-      rows = rows.filter(function(r) {
-        var d = new Date(r.occ_date_time || r.rep_date_time || '');
-        return !isNaN(d) && d >= cutoff;
-      });
       incidents = rows.map(function(r) {
         var typeVal  = r.crime_type || '';
         var dateStr  = r.occ_date_time || r.rep_date_time || '';
