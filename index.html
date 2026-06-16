@@ -154,7 +154,7 @@
 
   <div id="status-bar">
     <span id="record-count">Loading…</span>
-    <span id="data-lag">weekly data</span>
+    <span id="data-lag">last 30 days</span>
   </div>
 
   <div id="ticker-wrap">
@@ -184,8 +184,11 @@ var lastTime     = null;
 var rafId        = null;
 var totalH       = 0;
 
-// Socrata — native CORS, no proxy needed; $limit=150 for 150 incidents
-var APD_URL = 'https://data.austintexas.gov/resource/fdj4-gpfu.json?$limit=150&$order=occ_date_time+DESC';
+// Socrata — native CORS, no proxy needed; $limit=150, filtered to last 30 days
+var oneMonthAgo = new Date();
+oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+var oneMonthAgoISO = oneMonthAgo.toISOString().replace('T', 'T').split('.')[0];
+var APD_URL = 'https://data.austintexas.gov/resource/fdj4-gpfu.json?$limit=150&$order=occ_date_time+DESC&$where=occ_date_time+%3E+%27' + oneMonthAgoISO + '%27';
 
 var VIOLENT  = ['MURDER','HOMICIDE','RAPE','ROBBERY','ASSAULT','SHOOTING','WEAPON','THREAT','KIDNAP','ARSON','STRANGULATION','FAMILY DISTURBANCE','DEADLY CONDUCT','AGG ASSAULT','SEX OFFENSE'];
 var PROPERTY = ['BURGLARY','THEFT','LARCENY','AUTO THEFT','MOTOR VEHICLE','TRESPASS','VANDALISM','CRIMINAL MISCHIEF','FRAUD','FORGERY','SHOPLIFTING','STOLEN','EMBEZZLE','GRAFFITI'];
