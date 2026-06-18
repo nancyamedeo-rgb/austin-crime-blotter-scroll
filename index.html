@@ -154,7 +154,7 @@
 
   <div id="status-bar">
     <span id="record-count">Loading…</span>
-    <span id="data-lag">most recent 150 reports</span>
+    <span id="data-lag">loading…</span>
   </div>
 
   <div id="ticker-wrap">
@@ -184,8 +184,13 @@ var lastTime     = null;
 var rafId        = null;
 var totalH       = 0;
 
-// Socrata — native CORS, no proxy needed; $limit=150 for 150 most recent incidents
-var APD_URL = 'https://data.austintexas.gov/resource/fdj4-gpfu.json?$limit=150&$order=occ_date_time+DESC';
+// Socrata — native CORS, no proxy needed; $limit=150 for 150 incidents
+// APD Computer Aided Dispatch Incidents — near-real-time 911 calls, updated continuously
+// Resource: 22de-7rzg  Fields: incident_number, problem, nature, address, datetime_complete, response_time_seconds, priority
+// Fallback: Crime Reports 2025 (n376-8ah5) if CAD has no results
+var CAD_URL      = 'https://data.austintexas.gov/resource/22de-7rzg.json?$limit=200&$order=datetime_complete+DESC&$where=datetime_complete+IS+NOT+NULL';
+var CRIME25_URL  = 'https://data.austintexas.gov/resource/n376-8ah5.json?$limit=150&$order=occ_date_time+DESC';
+var APD_URL = CAD_URL; // default to CAD
 
 var VIOLENT  = ['MURDER','HOMICIDE','RAPE','ROBBERY','ASSAULT','SHOOTING','WEAPON','THREAT','KIDNAP','ARSON','STRANGULATION','FAMILY DISTURBANCE','DEADLY CONDUCT','AGG ASSAULT','SEX OFFENSE'];
 var PROPERTY = ['BURGLARY','THEFT','LARCENY','AUTO THEFT','MOTOR VEHICLE','TRESPASS','VANDALISM','CRIMINAL MISCHIEF','FRAUD','FORGERY','SHOPLIFTING','STOLEN','EMBEZZLE','GRAFFITI'];
@@ -304,31 +309,55 @@ function loadData() {
   fetch(APD_URL)
     .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
     .then(function(rows) {
-      if (!Array.isArray(rows) || !rows.length) throw new Error();
+      if (!Array.isArray(rows) || !rows.length) throw new Error('no rows');
+
+      // Detect which dataset we got by checking field names
+      var isCad = rows[0].hasOwnProperty('problem') || rows[0].hasOwnProperty('nature');
+
       incidents = rows.map(function(r) {
-        var typeVal  = r.crime_type || '';
-        var dateStr  = r.occ_date_time || r.rep_date_time || '';
-        var narrative = '';
-        if (r.clearance_status && r.clearance_status !== 'N' && r.clearance_status !== 'O') {
-          narrative = 'Cleared: ' + r.clearance_status;
+        var typeVal, dateStr, locationVal, caseNo, narrative;
+        if (isCad) {
+          // CAD fields: problem, nature, address, datetime_complete, priority
+          typeVal     = r.problem || r.nature || r.incident_type || '';
+          dateStr     = r.datetime_complete || r.call_received_datetime || '';
+          locationVal = r.address || r.location || '';
+          caseNo      = r.incident_number || '';
+          narrative   = r.priority ? 'Priority ' + r.priority : '';
+        } else {
+          // Crime Reports 2025 fields
+          typeVal     = r.crime_type || r.highest_offense_description || '';
+          dateStr     = r.occ_date_time || r.rep_date_time || '';
+          locationVal = r.location_type || '';
+          caseNo      = r.incident_report_number || '';
+          narrative   = (r.clearance_status && r.clearance_status !== 'N' && r.clearance_status !== 'O')
+                        ? 'Cleared: ' + r.clearance_status : '';
         }
         return {
           type:      typeVal,
-          location:  r.location_type || '',
+          location:  locationVal,
           dateStr:   dateStr,
-          case_no:   r.incident_report_number || '',
+          case_no:   caseNo,
           narrative: narrative,
           cat:       categorize(typeVal)
         };
       });
       loading = false;
-      document.getElementById('record-count').textContent = incidents.length + ' incidents';
+      var sourceLabel = isCad ? ' (live CAD)' : ' (crime reports)';
+      document.getElementById('record-count').textContent = incidents.length + ' incidents' + sourceLabel;
+      document.getElementById('data-lag').textContent = isCad ? 'near real-time' : 'weekly data';
       document.getElementById('updated').textContent =
         'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       document.getElementById('refresh-icon').classList.remove('spin');
       render();
     })
-    .catch(function() {
+    .catch(function(e) {
+      // If CAD failed, try the 2025 crime reports as fallback
+      if (APD_URL === CAD_URL) {
+        console.warn('CAD fetch failed, trying Crime Reports 2025:', e.message);
+        APD_URL = CRIME25_URL;
+        loadData();
+        return;
+      }
       loading = false;
       document.getElementById('record-count').textContent = 'Data unavailable';
       document.getElementById('refresh-icon').classList.remove('spin');
@@ -337,12 +366,13 @@ function loadData() {
 }
 
 function doRefresh() {
+  APD_URL = CAD_URL; // reset to live CAD on manual refresh
   document.getElementById('refresh-icon').classList.add('spin');
   incidents = []; render(); loadData();
 }
 
 loadData();
-setInterval(loadData, 600000);
+setInterval(loadData, 600000); // refresh every 10 minutes — CAD data updates continuously
 </script>
 </body>
 </html>
