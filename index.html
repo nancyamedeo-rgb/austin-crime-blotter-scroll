@@ -188,7 +188,7 @@ var totalH       = 0;
 // APD Computer Aided Dispatch Incidents — near-real-time 911 calls, updated continuously
 // Resource: 22de-7rzg  Fields: incident_number, problem, nature, address, datetime_complete, response_time_seconds, priority
 // Fallback: Crime Reports 2025 (n376-8ah5) if CAD has no results
-var CAD_URL      = 'https://data.austintexas.gov/resource/22de-7rzg.json?$limit=200&$order=datetime_complete+DESC&$where=datetime_complete+IS+NOT+NULL';
+var CAD_URL      = 'https://data.austintexas.gov/resource/22de-7rzg.json?$limit=200&$order=response_datetime+DESC';
 var CRIME25_URL  = 'https://data.austintexas.gov/resource/n376-8ah5.json?$limit=150&$order=occ_date_time+DESC';
 var APD_URL = CAD_URL; // default to CAD
 
@@ -312,17 +312,19 @@ function loadData() {
       if (!Array.isArray(rows) || !rows.length) throw new Error('no rows');
 
       // Detect which dataset we got by checking field names
-      var isCad = rows[0].hasOwnProperty('problem') || rows[0].hasOwnProperty('nature');
+      var isCad = rows[0].hasOwnProperty('final_problem_description') || rows[0].hasOwnProperty('response_datetime') || rows[0].hasOwnProperty('priority_level');
 
       incidents = rows.map(function(r) {
         var typeVal, dateStr, locationVal, caseNo, narrative;
         if (isCad) {
-          // CAD fields: problem, nature, address, datetime_complete, priority
-          typeVal     = r.problem || r.nature || r.incident_type || '';
-          dateStr     = r.datetime_complete || r.call_received_datetime || '';
-          locationVal = r.address || r.location || '';
+          // CAD fields from actual schema:
+          // incident_number, incident_type, response_datetime, call_closed_datetime,
+          // initial_problem_description, final_problem_description, final_problem_category, priority_level, sector
+          typeVal     = r.final_problem_description || r.initial_problem_description || r.incident_type || '';
+          dateStr     = r.response_datetime || r.call_closed_datetime || '';
+          locationVal = r.sector || '';
           caseNo      = r.incident_number || '';
-          narrative   = r.priority ? 'Priority ' + r.priority : '';
+          narrative   = r.priority_level ? r.priority_level : '';
         } else {
           // Crime Reports 2025 fields
           typeVal     = r.crime_type || r.highest_offense_description || '';
